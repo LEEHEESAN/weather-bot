@@ -2,6 +2,9 @@ import requests
 import time
 from urllib.parse import quote
 
+from flask import Flask
+from threading import Thread
+
 # ===== 설정 =====
 BOT_TOKEN = "8615496573:AAH7JRA50W5SR0NbLlYfwTOYcI0hcGLXxmg"
 KAKAO_API_KEY = "ef1b18abff17b07d7834a34c0deca996"
@@ -9,7 +12,25 @@ CHAT_ID = "5192558336"
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# ===== 위치 기반 날씨 가져오기 =====
+# ===== Flask 웹서버 =====
+app = Flask('')
+
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+
+def run_web():
+    app.run(host='0.0.0.0', port=10000)
+
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
+
+# ===== 위치 기반 날씨 =====
 def get_weather(lat, lon):
 
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
@@ -22,7 +43,6 @@ def get_weather(lat, lon):
     temp = data['current_weather']['temperature']
     weather_code = data['current_weather']['weathercode']
 
-    # 날씨 상태 변환
     if weather_code == 0:
         desc = "맑음 ☀️"
 
@@ -63,7 +83,26 @@ def recommend_clothes(temp):
         return "코트 + 니트 🧣"
 
 
-# ===== 주변 장소 검색 =====
+# ===== 활동 추천 =====
+def recommend_activity(temp, desc):
+
+    if "비" in desc:
+        return "키즈카페"
+
+    elif temp >= 28:
+        return "물놀이장"
+
+    elif temp >= 20:
+        return "어린이공원"
+
+    elif temp >= 10:
+        return "수목원"
+
+    else:
+        return "실내 키즈카페"
+
+
+# ===== 장소 검색 =====
 def search_nearby_places(lat, lon, keyword):
 
     url = "https://dapi.kakao.com/v2/local/search/keyword.json"
@@ -76,7 +115,7 @@ def search_nearby_places(lat, lon, keyword):
         "query": keyword,
         "x": lon,
         "y": lat,
-        "radius": 3000,
+        "radius": 5000,
         "size": 3
     }
 
@@ -103,14 +142,13 @@ def search_nearby_places(lat, lon, keyword):
             or "주소 없음"
         )
 
-        encoded_name = quote(name)
-
-        naver_link = f"https://map.naver.com/v5/search/{encoded_name}"
+        # 네이버 지도 링크
+        naver_link = f"https://map.naver.com/v5/search/{quote(name, safe='')}"
 
         places.append(
             f"""📍 {name}
 🏠 {address}
-🗺 {naver_link}"""
+🗺 <a href='{naver_link}'>지도 보기</a>"""
         )
 
     if len(places) == 0:
@@ -152,30 +190,6 @@ def search_place_image(keyword):
     return None
 
 
-# ===== 활동 추천 =====
-def recommend_activity(temp, desc):
-
-    # 비
-    if "비" in desc:
-        return "키즈카페"
-
-    # 더움
-    elif temp >= 28:
-        return "물놀이장"
-
-    # 야외활동
-    elif temp >= 20:
-        return "어린이공원"
-
-    # 선선함
-    elif temp >= 10:
-        return "수목원"
-
-    # 추움
-    else:
-        return "실내 키즈카페"
-
-
 # ===== 텔레그램 메시지 보내기 =====
 def send_message(chat_id, text):
 
@@ -185,7 +199,9 @@ def send_message(chat_id, text):
         url,
         data={
             "chat_id": chat_id,
-            "text": text
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
         }
     )
 
@@ -193,7 +209,7 @@ def send_message(chat_id, text):
     print(response.text)
 
 
-# ===== 텔레그램 사진 보내기 =====
+# ===== 사진 보내기 =====
 def send_photo(chat_id, photo_url, caption=""):
 
     url = f"{BASE_URL}/sendPhoto"
@@ -223,26 +239,36 @@ def handle_message(message):
     print("입력값:")
     print(message)
 
-    # ===== 위치 기반 추천 =====
+    # ===== 위치 기반 =====
     if location:
 
         lat = location["latitude"]
         lon = location["longitude"]
 
-        # 현재 위치 날씨
+        # 날씨
         temp, desc = get_weather(lat, lon)
 
+        # 코디 추천
         clothes = recommend_clothes(temp)
 
+        # 활동 추천
         keyword = recommend_activity(temp, desc)
 
-        # 현재 위치 기반 장소 검색
+        # 장소 검색
         places = search_nearby_places(
             lat,
             lon,
             keyword
         )
 
+        # 이미지 검색
+        image_keyword = f"{keyword} 경산"
+
+        photo_url = search_place_image(
+            image_keyword
+        )
+
+        # 답변 생성
         reply = f"""📍 현재 위치 기반 추천
 
 🌡 현재 기온: {temp}°C
@@ -255,22 +281,17 @@ def handle_message(message):
 {places}
 """
 
-        # 장소 이미지 검색
-        photo_url = search_place_image(keyword)
-
-        # 사진 있으면 사진 전송
+        # 사진 먼저 보내기
         if photo_url:
 
             send_photo(
                 chat_id,
                 photo_url,
-                reply
+                "📸 추천 장소 이미지"
             )
 
-        # 사진 없으면 텍스트만
-        else:
-
-            send_message(chat_id, reply)
+        # 텍스트 따로 보내기
+        send_message(chat_id, reply)
 
         return
 
@@ -278,13 +299,14 @@ def handle_message(message):
     elif "날씨" in text:
 
         reply = """📍 위치를 보내주시면
-현재 위치 기반으로
+
+현재 위치 기반으로:
 
 • 날씨
 • 추천 코디
 • 아이와 갈만한 곳
 • 장소 사진
-• 지도 링크
+• 네이버 지도 링크
 
 를 추천해드려요 😊
 
@@ -293,7 +315,7 @@ def handle_message(message):
 
         send_message(chat_id, reply)
 
-    # ===== 기타 입력 =====
+    # ===== 기타 =====
     else:
 
         send_message(
@@ -325,7 +347,7 @@ def get_updates(offset=None):
     return res.json()
 
 
-# ===== 메인 실행 =====
+# ===== 메인 =====
 def main():
 
     offset = None
@@ -369,5 +391,7 @@ def main():
 if __name__ == "__main__":
 
     print("봇 실행 중...")
+
+    keep_alive()
 
     main()
