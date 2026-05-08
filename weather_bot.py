@@ -1,12 +1,11 @@
+import telebot
 import requests
 import time
-import json
 import os
-
-from urllib.parse import quote
 
 from flask import Flask
 from threading import Thread
+from urllib.parse import quote
 
 # ===== 설정 =====
 BOT_TOKEN = "8615496573:AAH7JRA50W5SR0NbLlYfwTOYcI0hcGLXxmg"
@@ -16,7 +15,7 @@ KAKAO_API_KEY = "ef1b18abff17b07d7834a34c0deca996"
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # ===== Flask =====
-app = Flask('')
+app = Flask(__name__)
 
 
 @app.route('/')
@@ -24,6 +23,7 @@ def home():
     return "Bot is running!"
 
 
+# ===== Render 유지 =====
 def run_web():
 
     app.run(
@@ -49,7 +49,12 @@ def get_weather(lat, lon):
         f"&current_weather=true"
     )
 
-    data = requests.get(url).json()
+    response = requests.get(
+        url,
+        timeout=10
+    )
+
+    data = response.json()
 
     print("날씨 데이터:")
     print(data)
@@ -137,7 +142,8 @@ def search_nearby_places(lat, lon, keyword):
     response = requests.get(
         url,
         headers=headers,
-        params=params
+        params=params,
+        timeout=10
     )
 
     data = response.json()
@@ -193,7 +199,8 @@ def search_place_image(keyword):
     response = requests.get(
         url,
         headers=headers,
-        params=params
+        params=params,
+        timeout=10
     )
 
     data = response.json()
@@ -233,7 +240,8 @@ def send_location_button(chat_id):
             "chat_id": chat_id,
             "text": "📍 현재 위치를 보내주세요 😊",
             "reply_markup": keyboard
-        }
+        },
+        timeout=10
     )
 
     print(response.text)
@@ -244,18 +252,26 @@ def send_message(chat_id, text):
 
     url = f"{BASE_URL}/sendMessage"
 
-    response = requests.post(
-        url,
-        data={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-    )
+    try:
 
-    print("메시지 전송:")
-    print(response.text)
+        response = requests.post(
+            url,
+            data={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            },
+            timeout=10
+        )
+
+        print("메시지 전송:")
+        print(response.text)
+
+    except Exception as e:
+
+        print("메시지 전송 오류:")
+        print(e)
 
 
 # ===== 사진 보내기 =====
@@ -263,18 +279,26 @@ def send_photo(chat_id, photo_url, caption=""):
 
     url = f"{BASE_URL}/sendPhoto"
 
-    response = requests.post(
-        url,
-        data={
-            "chat_id": chat_id,
-            "photo": photo_url,
-            "caption": caption,
-            "parse_mode": "HTML"
-        }
-    )
+    try:
 
-    print("사진 전송:")
-    print(response.text)
+        response = requests.post(
+            url,
+            data={
+                "chat_id": chat_id,
+                "photo": photo_url,
+                "caption": caption,
+                "parse_mode": "HTML"
+            },
+            timeout=15
+        )
+
+        print("사진 전송:")
+        print(response.text)
+
+    except Exception as e:
+
+        print("사진 전송 오류:")
+        print(e)
 
 
 # ===== 날씨 응답 =====
@@ -401,18 +425,28 @@ def get_updates(offset=None):
     url = f"{BASE_URL}/getUpdates"
 
     params = {
-        "timeout": 10
+        "timeout": 30
     }
 
     if offset:
         params["offset"] = offset
 
-    res = requests.get(
-        url,
-        params=params
-    )
+    try:
 
-    return res.json()
+        res = requests.get(
+            url,
+            params=params,
+            timeout=35
+        )
+
+        return res.json()
+
+    except Exception as e:
+
+        print("get_updates 오류:")
+        print(e)
+
+        return {"result": []}
 
 
 # ===== 메인 =====
@@ -472,4 +506,15 @@ if __name__ == "__main__":
 
     keep_alive()
 
-    main()
+    while True:
+
+        try:
+
+            main()
+
+        except Exception as e:
+
+            print("치명적 오류:")
+            print(e)
+
+            time.sleep(10)
