@@ -56,9 +56,6 @@ def get_weather(lat, lon):
 
     data = response.json()
 
-    print("날씨 데이터:")
-    print(data)
-
     temp = data['current_weather']['temperature']
 
     weather_code = data['current_weather']['weathercode']
@@ -148,9 +145,6 @@ def search_nearby_places(lat, lon, keyword):
 
     data = response.json()
 
-    print("장소 검색:")
-    print(data)
-
     places = []
 
     for place in data.get("documents", []):
@@ -205,9 +199,6 @@ def search_place_image(keyword):
 
     data = response.json()
 
-    print("이미지 검색:")
-    print(data)
-
     documents = data.get("documents", [])
 
     if len(documents) > 0:
@@ -234,7 +225,7 @@ def send_location_button(chat_id):
         "one_time_keyboard": True
     }
 
-    response = requests.post(
+    requests.post(
         url,
         json={
             "chat_id": chat_id,
@@ -244,8 +235,6 @@ def send_location_button(chat_id):
         timeout=10
     )
 
-    print(response.text)
-
 
 # ===== 메시지 보내기 =====
 def send_message(chat_id, text):
@@ -254,7 +243,7 @@ def send_message(chat_id, text):
 
     try:
 
-        response = requests.post(
+        requests.post(
             url,
             data={
                 "chat_id": chat_id,
@@ -264,9 +253,6 @@ def send_message(chat_id, text):
             },
             timeout=10
         )
-
-        print("메시지 전송:")
-        print(response.text)
 
     except Exception as e:
 
@@ -281,7 +267,7 @@ def send_photo(chat_id, photo_url, caption=""):
 
     try:
 
-        response = requests.post(
+        requests.post(
             url,
             data={
                 "chat_id": chat_id,
@@ -292,9 +278,6 @@ def send_photo(chat_id, photo_url, caption=""):
             timeout=15
         )
 
-        print("사진 전송:")
-        print(response.text)
-
     except Exception as e:
 
         print("사진 전송 오류:")
@@ -303,9 +286,6 @@ def send_photo(chat_id, photo_url, caption=""):
 
 # ===== 날씨 응답 =====
 def send_weather_response(chat_id, lat, lon):
-
-    print("위치 수신 성공")
-    print(lat, lon)
 
     temp, desc = get_weather(lat, lon)
 
@@ -382,8 +362,12 @@ def handle_message(message):
 
         return
 
-    # ===== 날씨 =====
-    elif "날씨" in text:
+    # ===== 날씨 / 오늘날씨 / 내일날씨 =====
+    elif (
+        text == "날씨"
+        or text == "오늘날씨"
+        or text == "내일날씨"
+    ):
 
         # 개인채팅
         if chat_type == "private":
@@ -410,13 +394,10 @@ def handle_message(message):
 📎 버튼 → 위치 → 현재 위치 보내기"""
             )
 
-    # ===== 기타 =====
+    # ===== 기타 채팅 무시 =====
     else:
 
-        send_message(
-            chat_id,
-            "날씨 라고 입력해주세요 😊"
-        )
+        return
 
 
 # ===== 업데이트 =====
@@ -479,11 +460,6 @@ def main():
 
                             print("메시지 처리 오류:")
                             print(e)
-
-                            send_message(
-                                update["message"]["chat"]["id"],
-                                f"오류 발생 😢\n{e}"
-                            )
 
                     offset = (
                         update["update_id"] + 1
